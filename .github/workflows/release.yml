@@ -6,78 +6,118 @@ on:
       - "v*.*.*"
 
 permissions:
-  contents: write   # required to create releases and upload assets
+  contents: write          # create GitHub Releases
+  packages: write          # push to GitHub Container Registry
 
 jobs:
-  build-and-release:
-    name: Build & Release
+  # ─── Job 1: lint ────────────────────────────────────────────────────────────
+  lint:
+    name: Lint
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: "20"
           cache: "npm"
 
-      - name: Install dependencies
-        run: npm ci
+      - run: npm ci
+      - run: npm run lint
 
-      - name: Lint
-        run: npm run lint
+  # ─── Job 2: build & publish container ────────────────────────────────────────
+  docker:
+    name: Docker → ghcr.io
+    runs-on: ubuntu-latest
+    needs: lint
 
-      - name: Build
-        run: npm run build
-        env:
-          # Disable Next.js telemetry in CI
-          NEXT_TELEMETRY_DISABLED: 1
+    outputs:
+      image: ${{ steps.meta.outputs.tags }}
+      digest: ${{ steps.push.outputs.digest }}
 
-      # Bundle the Next.js standalone output + public + static files
-      # into a single tar.gz for deployment without Docker.
-      - name: Package standalone build
-        run: |
-          mkdir -p dist
-          cp -r .next/standalone dist/app
-          cp -r .next/static     dist/app/.next/static
-          cp -r public           dist/app/public
-          tar -czf ministack-ui-${{ github.ref_name }}.tar.gz -C dist app
-        # Note: requires `output: "standalone"` in next.config.ts (see below)
+    steps:
+      - uses: actions/checkout@v4
 
-      # Also package a simple zip of the full .next output + node_modules
-      # for teams that prefer a classic npm start approach.
-      - name: Package full build (zip)
-        run: |
-          zip -qr ministack-ui-${{ github.ref_name }}-full.zip \
-            .next \
-            public \
-            package.json \
-            next.config.ts \
-            tsconfig.json
+      # Enables multi-platform builds (linux/amd64 + linux/arm64)
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Generates tags:
+      #   ghcr.io/<owner>/ministack-ui:v1.2.3
+      #   ghcr.io/<owner>/ministack-ui:1.2.3
+      #   ghcr.io/<owner>/ministack-ui:latest  (only on non-prerelease tags)
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/ministack-ui
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern=v{{version}}
+            type=raw,value=latest,enable=${{ !contains(github.ref_name, '-') }}
+
+      - name: Build & push image
+        id: push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ─── Job 3: GitHub Release ───────────────────────────────────────────────────
+  release:
+    name: GitHub Release
+    runs-on: ubuntu-latest
+    needs: docker
+
+    steps:
+      - uses: actions/checkout@v4
 
       - name: Extract changelog entry
         id: changelog
         run: |
-          # Pull the top-most version block from CHANGELOG.md if it exists,
-          # otherwise fall back to a generic message.
           if [ -f CHANGELOG.md ]; then
             awk '/^## \[/{if(p)exit; p=1; next} p{print}' CHANGELOG.md \
-              | head -80 \
-              > release_notes.md
+              | head -80 > release_notes.md
+            echo "" >> release_notes.md
           else
-            echo "Release ${{ github.ref_name }}" > release_notes.md
+            echo "" > release_notes.md
           fi
-          echo "notes_file=release_notes.md" >> "$GITHUB_OUTPUT"
+          # Append Docker pull instructions to every release
+          cat >> release_notes.md << EOF
+
+          ---
+
+          ## Docker
+
+          \`\`\`bash
+          docker pull ghcr.io/${{ github.repository_owner }}/ministack-ui:${{ github.ref_name }}
+
+          # Run against a local MiniStack instance
+          docker run -p 3000:3000 \\
+            -e NEXT_PUBLIC_MINISTACK_URL=http://host.docker.internal:4566 \\
+            ghcr.io/${{ github.repository_owner }}/ministack-ui:${{ github.ref_name }}
+          \`\`\`
+          EOF
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           name: "MiniStack UI ${{ github.ref_name }}"
-          body_path: ${{ steps.changelog.outputs.notes_file }}
+          body_path: release_notes.md
           draft: false
           prerelease: ${{ contains(github.ref_name, '-') }}
-          files: |
-            ministack-ui-${{ github.ref_name }}.tar.gz
-            ministack-ui-${{ github.ref_name }}-full.zip

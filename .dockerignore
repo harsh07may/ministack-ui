@@ -1,0 +1,10 @@
+.git
+.github
+.next
+.agent
+node_modules
+*.md
+*.log
+*.env*
+.gitignore
+docs
