@@ -3,74 +3,13 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { useHealth } from "../hooks/useHealth";
 import { useSearch } from "../contexts/search";
-import { listTables } from "../lib/services/dynamodb";
-import { listFunctions } from "../lib/services/lambda";
-import { listBuckets } from "../lib/services/s3";
-import { listSecrets } from "../lib/services/secretsmanager";
-import { listTopics } from "../lib/services/sns";
-import { listQueues } from "../lib/services/sqs";
-
-interface ServiceDef {
-  key: string;
-  label: string;
-  noun: string;
-  iconPath: string;
-  href: string;
-  fetchCount: () => Promise<number>;
-}
-
-const SERVICES: ServiceDef[] = [
-  {
-    key: "s3",
-    label: "S3",
-    noun: "Buckets",
-    iconPath: "/icons/aws/s3.svg",
-    href: "/resources/s3",
-    fetchCount: () => listBuckets().then((items) => items.length),
-  },
-  {
-    key: "dynamodb",
-    label: "DynamoDB",
-    noun: "Tables",
-    iconPath: "/icons/aws/dynamodb.svg",
-    href: "/resources/dynamodb",
-    fetchCount: () => listTables().then((items) => items.length),
-  },
-  {
-    key: "lambda",
-    label: "Lambda",
-    noun: "Functions",
-    iconPath: "/icons/aws/lambda.svg",
-    href: "/resources/lambda",
-    fetchCount: () => listFunctions().then((items) => items.length),
-  },
-  {
-    key: "sqs",
-    label: "SQS",
-    noun: "Queues",
-    iconPath: "/icons/aws/simple-queue-service.svg",
-    href: "/resources/sqs",
-    fetchCount: () => listQueues().then((items) => items.length),
-  },
-  {
-    key: "sns",
-    label: "SNS",
-    noun: "Topics",
-    iconPath: "/icons/aws/simple-notification-service.svg",
-    href: "/resources/sns",
-    fetchCount: () => listTopics().then((items) => items.length),
-  },
-  {
-    key: "secretsmanager",
-    label: "Secrets Manager",
-    noun: "Secrets",
-    iconPath: "/icons/aws/secrets-manager.svg",
-    href: "/resources/secretsmanager",
-    fetchCount: () => listSecrets().then((items) => items.length),
-  },
-];
+import { useHealth } from "../hooks/useHealth";
+import {
+  FETCH_COUNT_TIMEOUT_MS,
+  SERVICES,
+  type ServiceDef,
+} from "../lib/service-config";
 
 function extractPort(endpoint: string): string {
   try {
@@ -81,11 +20,11 @@ function extractPort(endpoint: string): string {
 }
 
 export default function DashboardPage() {
-  const { healthy, version, endpoint, services } = useHealth();
+  const { healthy, version, edition, endpoint, services } = useHealth();
   const { query } = useSearch();
   const [counts, setCounts] = useState<Record<string, number | null>>({});
 
-  const visibleServices = query
+  const visibleServices: ServiceDef[] = query
     ? SERVICES.filter(
         (svc) =>
           svc.label.toLowerCase().includes(query.toLowerCase()) ||
@@ -95,8 +34,16 @@ export default function DashboardPage() {
 
   useEffect(() => {
     for (const svc of SERVICES) {
-      svc
-        .fetchCount()
+      const fetchWithTimeout = Promise.race([
+        svc.fetchCount(),
+        new Promise<number>((_, reject) =>
+          setTimeout(
+            () => reject(new Error("timeout")),
+            FETCH_COUNT_TIMEOUT_MS,
+          ),
+        ),
+      ]);
+      fetchWithTimeout
         .then((n) => setCounts((prev) => ({ ...prev, [svc.key]: n })))
         .catch(() => setCounts((prev) => ({ ...prev, [svc.key]: null })));
     }
@@ -106,7 +53,7 @@ export default function DashboardPage() {
 
   const stats = [
     { label: "Port", value: port },
-    { label: "Persistence", value: "Disabled" },
+    { label: "Edition", value: edition || "—" },
     { label: "Engine", value: version ? `v${version}` : "—" },
     {
       label: "Status",

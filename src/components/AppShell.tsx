@@ -1,19 +1,18 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { usePathname } from "next/navigation";
 import { SearchContext } from "../contexts/search";
 import Sidebar from "./Sidebar";
 import TopBar from "./TopBar";
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const [query, setQuery] = useState("");
-  const pathname = usePathname();
 
-  // Clear search when navigating between pages
+  // Clear search when navigating between pages; might need to just keep this in dashboard.
   useEffect(() => {
     setQuery("");
-  }, [pathname]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <SearchContext.Provider value={{ query, setQuery }}>

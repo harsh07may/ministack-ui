@@ -2,10 +2,12 @@
 
 import { useEffect, useState } from "react";
 import { getEndpoint } from "../lib/ministack-client";
+import { HEALTH_POLL_INTERVAL_MS } from "../lib/service-config";
 
 export interface HealthState {
   healthy: boolean;
   version: string;
+  edition: string;
   endpoint: string;
   services: Record<string, string>;
 }
@@ -15,6 +17,7 @@ export function useHealth(): HealthState {
   const [state, setState] = useState<HealthState>({
     healthy: false,
     version: "",
+    edition: "",
     endpoint,
     services: {},
   });
@@ -29,6 +32,7 @@ export function useHealth(): HealthState {
         setState({
           healthy: allUp,
           version: data.version ?? "",
+          edition: data.edition ?? "",
           endpoint,
           services,
         });
@@ -38,7 +42,7 @@ export function useHealth(): HealthState {
     }
 
     poll();
-    const id = setInterval(poll, 5000);
+    const id = setInterval(poll, HEALTH_POLL_INTERVAL_MS);
     return () => clearInterval(id);
   }, [endpoint]);
 

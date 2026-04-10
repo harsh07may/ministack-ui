@@ -4,7 +4,6 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
-import { useHealth } from "../hooks/useHealth";
 
 const NAV_ITEMS = [
   { href: "/", label: "Dashboard", exact: true, iconPath: null },
@@ -97,7 +96,6 @@ function ChevronRightIcon() {
 
 export default function Sidebar() {
   const pathname = usePathname();
-  const { healthy } = useHealth();
   const [collapsed, setCollapsed] = useState(false);
 
   function isActive(href: string, exact: boolean): boolean {
@@ -171,31 +169,7 @@ export default function Sidebar() {
         })}
       </nav>
 
-      {/* Status */}
-      <div
-        className={`border-t border-zinc-800/60 ${
-          collapsed ? "py-4 flex justify-center" : "px-5 py-4"
-        }`}
-      >
-        {collapsed ? (
-          <span
-            className={`w-2 h-2 rounded-full ${healthy ? "bg-green-400" : "bg-red-500"}`}
-            title={healthy ? "System Online" : "System Offline"}
-          />
-        ) : (
-          <div className="flex items-center gap-2">
-            <span
-              className={`w-1.5 h-1.5 rounded-full ${healthy ? "bg-green-400" : "bg-red-500"}`}
-            />
-            <span className="text-xs text-zinc-500">
-              System Status:{" "}
-              <span className={healthy ? "text-green-400" : "text-red-400"}>
-                {healthy ? "Online" : "Offline"}
-              </span>
-            </span>
-          </div>
-        )}
-      </div>
+      {/* TODO: Settings */}
     </aside>
   );
 }

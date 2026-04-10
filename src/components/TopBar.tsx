@@ -22,11 +22,13 @@ function ResetModal({
   }, [onCancel]);
 
   return (
-    <div
+    <button
+      type="button"
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
       onClick={onCancel}
     >
-      <div
+      <button
+        type="button"
         className="w-full max-w-sm mx-4 bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
@@ -56,8 +58,8 @@ function ResetModal({
             Reset
           </button>
         </div>
-      </div>
-    </div>
+      </button>
+    </button>
   );
 }
 
