@@ -1,0 +1,83 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write   # required to create releases and upload assets
+
+jobs:
+  build-and-release:
+    name: Build & Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        run: npm run build
+        env:
+          # Disable Next.js telemetry in CI
+          NEXT_TELEMETRY_DISABLED: 1
+
+      # Bundle the Next.js standalone output + public + static files
+      # into a single tar.gz for deployment without Docker.
+      - name: Package standalone build
+        run: |
+          mkdir -p dist
+          cp -r .next/standalone dist/app
+          cp -r .next/static     dist/app/.next/static
+          cp -r public           dist/app/public
+          tar -czf ministack-ui-${{ github.ref_name }}.tar.gz -C dist app
+        # Note: requires `output: "standalone"` in next.config.ts (see below)
+
+      # Also package a simple zip of the full .next output + node_modules
+      # for teams that prefer a classic npm start approach.
+      - name: Package full build (zip)
+        run: |
+          zip -qr ministack-ui-${{ github.ref_name }}-full.zip \
+            .next \
+            public \
+            package.json \
+            next.config.ts \
+            tsconfig.json
+
+      - name: Extract changelog entry
+        id: changelog
+        run: |
+          # Pull the top-most version block from CHANGELOG.md if it exists,
+          # otherwise fall back to a generic message.
+          if [ -f CHANGELOG.md ]; then
+            awk '/^## \[/{if(p)exit; p=1; next} p{print}' CHANGELOG.md \
+              | head -80 \
+              > release_notes.md
+          else
+            echo "Release ${{ github.ref_name }}" > release_notes.md
+          fi
+          echo "notes_file=release_notes.md" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "MiniStack UI ${{ github.ref_name }}"
+          body_path: ${{ steps.changelog.outputs.notes_file }}
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          files: |
+            ministack-ui-${{ github.ref_name }}.tar.gz
+            ministack-ui-${{ github.ref_name }}-full.zip
