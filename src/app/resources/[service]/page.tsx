@@ -117,25 +117,34 @@ export default function ResourcePage({
   params: Promise<{ service: string }>;
 }) {
   const { service } = use(params);
+  const config = isServiceKey(service) ? SERVICE_CONFIG[service] : null;
 
-  if (!isServiceKey(service)) notFound();
-
-  const config = SERVICE_CONFIG[service];
   const [rows, setRows] = useState<Record<string, string>[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(config !== null);
+  const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
+    if (!config) return;
     setLoading(true);
+    setError(null);
     try {
       setRows(await config.fetchRows());
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load resources");
     } finally {
       setLoading(false);
     }
   }, [config]);
 
   useEffect(() => {
-    load();
-  }, [load]);
+    if (!config) {
+      notFound();
+    } else {
+      load();
+    }
+  }, [config, load]);
+
+  if (!config) return null;
 
   return (
     <main className="p-8">
@@ -155,9 +164,17 @@ export default function ResourcePage({
           ↻ Refresh
         </button>
       </div>
-      <div className="rounded-lg bg-zinc-900 overflow-hidden">
-        <ResourceTable columns={config.columns} rows={rows} loading={loading} />
-      </div>
+      {error ? (
+        <p className="py-12 text-center text-sm text-red-400">{error}</p>
+      ) : (
+        <div className="rounded-lg bg-zinc-900 overflow-hidden">
+          <ResourceTable
+            columns={config.columns}
+            rows={rows}
+            loading={loading}
+          />
+        </div>
+      )}
     </main>
   );
 }
