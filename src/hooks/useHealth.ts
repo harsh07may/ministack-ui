@@ -7,6 +7,7 @@ export interface HealthState {
   healthy: boolean;
   version: string;
   endpoint: string;
+  services: Record<string, string>;
 }
 
 export function useHealth(): HealthState {
@@ -15,17 +16,22 @@ export function useHealth(): HealthState {
     healthy: false,
     version: "",
     endpoint,
+    services: {},
   });
 
   useEffect(() => {
     async function poll() {
       try {
-        const res = await fetch(`${endpoint}/_ministack/health`);
+        const res = await fetch("/api/health");
         const data = await res.json();
-        const allUp = Object.values(data.services ?? {}).every(
-          (v) => v === "available",
-        );
-        setState({ healthy: allUp, version: data.version ?? "", endpoint });
+        const services: Record<string, string> = data.services ?? {};
+        const allUp = Object.values(services).every((v) => v === "available");
+        setState({
+          healthy: allUp,
+          version: data.version ?? "",
+          endpoint,
+          services,
+        });
       } catch {
         setState((prev) => ({ ...prev, healthy: false }));
       }
